@@ -22,3 +22,5 @@ mysql> select count(*) from offices;
 |        7 |
 +----------+
 1 row in set (0.00 sec)
+
+*This is a MariaDB server*
