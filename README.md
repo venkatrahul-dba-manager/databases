@@ -1,3 +1,3 @@
 # databases #
-Mysql-MariaDB-PostgreSQL-EnterpriceDB-Cassandra-MongoDB-Vertica
+Mysql-MariaDB-PostgreSQL-EnterpriseDB-SQLServer-Cassandra-MongoDB-Vertica
 
