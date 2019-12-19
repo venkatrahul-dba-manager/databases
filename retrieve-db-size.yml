@@ -1,0 +1,45 @@
+---
+
+- name: This playbook retrieves the size of db's on a host and writes the output to a file.
+  hosts: all-databases:&{{ subset | default('NONE')}}
+  gather_facts: False
+  serial: "0%"
+  vars:
+    # Determine the engine type
+    db_engine: "{%if ((aws_rds is defined and aws_rds.db.engine == 'postgres') or (aws_rds_cluster is defined and aws_rds_cluster.engine == 'aurora-postgresql'))%}postgres{% elif ((aws_rds is defined and aws_rds.db.engine == 'mysql') or (aws_rds_cluster is defined and (aws_rds_cluster.engine == 'aurora-mysql' or aws_rds_cluster.engine == 'aurora')))%}mysql{% else %}unknown{% endif %}"
+    # Determine the endpoint based on if the target host is an Instance or Cluster
+    endpoint: "{% if jump_host is defined %}{{ inventory_hostname }}{% if aws_rds is defined %}{{ endpoint_postfix }}{% else %}{{aurora_endpoint_postfix}}{% endif %}{% else %}''{% endif %}"
+
+  tasks:
+  - name: Get the current date for the output file name
+    set_fact: currentdate="{{lookup('pipe','date +%Y%m%d')}}"
+    when: db_engine=='aurora-postgresql'
+
+  - name: Set the output file name
+    set_fact: output_file="{{ results_dir }}/database-size-{{ subset }}-{{ currentdate }}.txt"
+    when: db_engine=='aurora-postgresql'
+
+  - name: Get database size data
+    shell: "psql -sN -u {{ psql.system_users.monitor_user }} -p'{{ mysql.system_users.monitor_passwd }}' -h {{ endpoint }} -e \"SELECT
+                                                           LEFT(@@hostname, LOCATE('.', @@hostname) - 1),
+                                                           @@datadir,
+                                                           SUM(TABLE_ROWS),
+                                                           ROUND(SUM(DATA_LENGTH + INDEX_LENGTH) / 1073741824, 2),
+                                                           ROUND(SUM(DATA_LENGTH) / 1073741824, 2),
+                                                           ROUND(SUM(INDEX_LENGTH) / 1073741824, 2)
+                                                    FROM   information_schema.TABLES
+                                                    WHERE  TABLE_TYPE = 'BASE TABLE'\""
+    no_log: true
+    delegate_to: "{{ jump_host | default( ansible_host ) }}"
+    register: r_databasesize
+    when: db_engine=='mysql'
+
+  - name: Write database size data to output file
+    lineinfile:
+     line: "{{ inventory_hostname }} \t {{r_databasesize.stdout}}"
+     insertafter: EOF
+     create: yes
+     state: present
+     dest: "{{output_file}}"
+    delegate_to: 127.0.0.1
+    when: db_engine=='mysql'
